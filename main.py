@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+import json
 colors = ['rot', 'blau', 'grün', 'gelb']
 supplier = ['Anyseals', 'Dichtomatik', 'Freudenberg', 'PDT']
 sub_materials = ['NBR', 'FPM', 'PTFE', 'FFPM']
@@ -39,7 +40,7 @@ def create_matchco(data):
     return template_match
 
 
-def create_shorttext(data):
+def create_shorttext(data):  # TODO noch den Kurztext in die richtige Reihenfolge bringen.
     template = 'OR'
     insert_text = []
     for dataset in data:
@@ -57,6 +58,35 @@ def create_shorttext(data):
         else:
             template += ' ' + value
     return template
+
+
+def create_product_hierarchy(data):
+    product_hierarchy = '53208'
+    header = ['Material', 'Härte', 'Beschichtung', 'Farbe']
+    values = {}
+    code_book_level_3 = {'ummantelt': '46', 'EPDM': '59', 'FFPM': '60', 'FPM': '61', 'MVQ': '68', 'NBR': '69'}
+    code_book_color = {'rot': 'rt', 'blau': 'bl', 'grün': 'gn', 'gelb': 'gl'}
+    js = open('code_book_product_hierarchy.json')
+    code_book_level_6 = json.load(js)
+    for variable in data:
+        if variable['description'] in header:
+            value = variable['variable'].get()
+            if value in code_book_color:
+                value = code_book_color[value]
+            if value == 'PC':
+                value = value + '-'
+            values[variable['description']] = value
+    material = values['Material']
+    code_book_level_3_rv = code_book_level_3[material]
+    product_hierarchy += code_book_level_3_rv + '0922' + '1015'
+    description_level_6 = material + ' ' + values['Härte'] + ' ' + values['Farbe']
+    code_book_level_6_rv = code_book_level_6[description_level_6]
+    product_hierarchy += code_book_level_6_rv
+    print(code_book_level_3_rv)
+    print(description_level_6)
+    print(code_book_level_6_rv)
+    print(product_hierarchy)
+    print(values)
 
 
 def check_input_syntax(data):
@@ -98,14 +128,15 @@ def process_data(variables, root):
     if rv_data[0]:
         rv_matchco = create_matchco(variables)
         rv_shorttext = create_shorttext(variables)
+        rv_product_hierarchy = create_product_hierarchy(variables)
         print(rv_matchco)
         print(rv_shorttext)
     else:
         error_window = tk.Toplevel(root)
         error_window.title("Error")
-        error_window.geometry("350x180")
+        error_window.geometry("350x300")
         tk.Label(error_window, text="Eingabefehler", font=("Arial", 18), pady=25).pack()
-        for error_message in rv_data[1]:
+        for error_message in rv_data[1]:                                            # TODO Was ist hier die Warnung?
             tk.Label(error_window, text=error_message, font=("Arial", 12)).pack()
 
 
@@ -130,12 +161,12 @@ def load_o_ring(root):
     variables.append({'description': rv_diameter[0], 'variable': rv_diameter[1]})
     rv_cord = create_text_field(root, 'Schnurstärke', 2)
     variables.append({'description': rv_cord[0], 'variable': rv_cord[1]})
-    rv_coating = create_dropdown(root, 'Beschichtung', ['PC'], 3)
-    variables.append({'description': rv_coating[0], 'variable': rv_coating[1]})
-    rv_material = create_dropdown(root, 'Material', sub_materials, 4)
+    rv_material = create_dropdown(root, 'Material', sub_materials, 3)
     variables.append({'description': rv_material[0], 'variable': rv_material[1]})
-    rv_hardness = create_text_field(root, 'Härte', 5)
+    rv_hardness = create_text_field(root, 'Härte', 4)
     variables.append({'description': rv_hardness[0], 'variable': rv_hardness[1]})
+    rv_coating = create_dropdown(root, 'Beschichtung', ['PC'], 5)
+    variables.append({'description': rv_coating[0], 'variable': rv_coating[1]})
     rv_color = create_dropdown(root, 'Farbe', colors, 6)
     variables.append({'description': rv_color[0], 'variable': rv_color[1]})
     rv_permission = create_dropdown(root, 'FDA', permission, 7)
