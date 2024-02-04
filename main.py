@@ -3,7 +3,7 @@ from tkinter import ttk
 import json
 colors = ['rot', 'blau', 'grün', 'gelb']
 supplier = ['Anyseals', 'Dichtomatik', 'Freudenberg', 'PDT']
-sub_materials = ['NBR', 'FPM', 'PTFE', 'FFPM']
+sub_materials = ['NBR', 'FPM', 'PTFE', 'FFPM', 'EPDM']
 permission = ['FDA']
 
 
@@ -40,21 +40,28 @@ def create_matchco(data):
     return template_match
 
 
-def create_shorttext(data):  # TODO noch den Kurztext in die richtige Reihenfolge bringen.
+def create_shorttext(data):
     template = 'OR'
+    code_book_color = {'rot': 'rt', 'blau': 'bl', 'grün': 'gn', 'gelb': 'gl'}
     insert_text = []
     for dataset in data:
         insert_text.append(dataset['variable'].get())
     insert_text = insert_text[:len(insert_text) - 3]
-    code_book_color = {'rot': 'rt', 'blau': 'bl', 'grün': 'gn', 'gelb': 'gl'}
+    if '' in insert_text:
+        insert_text.remove('')
+    print(insert_text)
+    if 'PC' in insert_text:
+        x = insert_text.index('PC')
+        value_pc = insert_text.pop(x)
+        insert_text.insert(3, value_pc)
     for i, value in enumerate(insert_text):
         if i == 0:
             template += ' ' + value + ' x'
-        elif value in sub_materials:
-            template += value
         elif value in colors:
             rv_resolved_col = code_book_color[value]
             template += ' ' + rv_resolved_col
+        elif value == 'PC':
+            template += value
         else:
             template += ' ' + value
     return template
@@ -74,19 +81,35 @@ def create_product_hierarchy(data):
             if value in code_book_color:
                 value = code_book_color[value]
             if value == 'PC':
-                value = value + '-'
+                value = '-' + value
             values[variable['description']] = value
     material = values['Material']
     code_book_level_3_rv = code_book_level_3[material]
-    product_hierarchy += code_book_level_3_rv + '0922' + '1015'
-    description_level_6 = material + ' ' + values['Härte'] + ' ' + values['Farbe']
-    code_book_level_6_rv = code_book_level_6[description_level_6]
-    product_hierarchy += code_book_level_6_rv
-    print(code_book_level_3_rv)
-    print(description_level_6)
-    print(code_book_level_6_rv)
-    print(product_hierarchy)
-    print(values)
+    product_hierarchy += code_book_level_3_rv + '09221015'
+    status = {'Material': None, 'Härte': None, 'Beschichtung': None, 'Farbe': None}
+    for value_e in values:
+        if values[value_e] != '':
+            status[value_e] = True
+    try:
+        if status['Material'] and status['Beschichtung'] and status['Härte'] and status['Farbe'] is None:
+            key = values['Material'] + values['Beschichtung'] + ' ' + values['Härte']
+            code_book_level_6_rv = code_book_level_6[key]
+            product_hierarchy += code_book_level_6_rv
+        elif status['Material'] and status['Härte'] and status['Farbe'] and status['Beschichtung'] is None:
+            key = values['Material'] + ' ' + values['Härte'] + ' ' + values['Farbe']
+            code_book_level_6_rv = code_book_level_6[key]
+            product_hierarchy += code_book_level_6_rv
+        elif status['Material'] and status['Härte'] and status['Farbe'] and status['Beschichtung']:
+            key = values['Material'] + ' ' + values['Härte'] + ' ' + values['Farbe']
+            code_book_level_6_rv = code_book_level_6[key]
+            product_hierarchy += code_book_level_6_rv
+        else:
+            key = values['Material'] + ' ' + values['Härte']
+            code_book_level_6_rv = code_book_level_6[key]
+            product_hierarchy += code_book_level_6_rv
+        return product_hierarchy
+    except KeyError:
+        return 'error'
 
 
 def check_input_syntax(data):
@@ -131,12 +154,18 @@ def process_data(variables, root):
         rv_product_hierarchy = create_product_hierarchy(variables)
         print(rv_matchco)
         print(rv_shorttext)
+        print(rv_product_hierarchy)
+        if rv_product_hierarchy == 'error':
+            error_window = tk.Toplevel(root)
+            error_window.title("Error")
+            error_window.geometry("200x200")
+            tk.Label(error_window, text="Hierarchie Fehler", font=("Arial", 18), pady=25).pack()
     else:
         error_window = tk.Toplevel(root)
         error_window.title("Error")
         error_window.geometry("350x300")
         tk.Label(error_window, text="Eingabefehler", font=("Arial", 18), pady=25).pack()
-        for error_message in rv_data[1]:                                            # TODO Was ist hier die Warnung?
+        for error_message in rv_data[1]:
             tk.Label(error_window, text=error_message, font=("Arial", 12)).pack()
 
 
