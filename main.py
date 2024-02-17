@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import ttk
 import json
+# import pandas as pd
+
 colors = ['rot', 'blau', 'grün', 'gelb']
-supplier = ['Anyseals', 'Dichtomatik', 'Freudenberg', 'PDT']
-sub_materials = ['NBR', 'FPM', 'PTFE', 'FFPM', 'EPDM']
+supplier = ['Anyseals', 'Dichtomatik', 'Freudenberg', 'PDT', 'Arcus']
+sub_materials = ['NBR', 'FPM', 'PTFE', 'FFPM', 'EPDM', 'MVQ']
 permission = ['FDA']
 
 
@@ -17,9 +19,10 @@ def create_matchco(data):
     insert_text = []
     for dataset in data:
         insert_text.append(dataset['variable'].get())
-    insert_text = insert_text[:len(insert_text) - 2]
+    insert_text = insert_text[:len(insert_text) - 3]
     code_book_color = {'rot': 'rt', 'blau': 'bl', 'grün': 'gn', 'gelb': 'gl'}
-    code_book_supplier = {'Anyseals': 'any', 'Dichtomatik': 'dm', 'Freudenberg': 'fst', 'PDT': 'pdt'}
+    code_book_supplier = {'Anyseals': 'any', 'Dichtomatik': 'dm', 'Freudenberg': 'fst', 'PDT': 'pdt',
+                          'Arcus': 'arc'}
     for i, value in enumerate(insert_text):
         if i == 0:
             rv = clean_number(value)
@@ -46,10 +49,11 @@ def create_shorttext(data):
     insert_text = []
     for dataset in data:
         insert_text.append(dataset['variable'].get())
-    insert_text = insert_text[:len(insert_text) - 3]
+    insert_text = insert_text[:len(insert_text) - 4]
     if '' in insert_text:
-        insert_text.remove('')
-    print(insert_text)
+        x = insert_text.count('')
+        for e in range(x):
+            insert_text.remove('')
     if 'PC' in insert_text:
         x = insert_text.index('PC')
         value_pc = insert_text.pop(x)
@@ -65,6 +69,29 @@ def create_shorttext(data):
         else:
             template += ' ' + value
     return template
+
+
+def create_product_group(data):
+    product_group = None
+    material = data['Material']
+    hardness = data['Härte']
+    if material == 'NBR':
+        attachment = material + hardness
+        if attachment == 'NBR70':
+            product_group = '147001000'
+        else:
+            product_group = '147002000'
+    elif material == 'FPM':
+        hardness_short = hardness[0]
+        if int(hardness_short) <= 7:
+            product_group = '147005000'
+        else:
+            product_group = '147006000'
+    elif material == 'EPDM':
+        product_group = '147007000'
+    elif material == 'MVQ':
+        product_group = '147008000'
+    return product_group
 
 
 def create_product_hierarchy(data):
@@ -83,6 +110,7 @@ def create_product_hierarchy(data):
             if value == 'PC':
                 value = '-' + value
             values[variable['description']] = value
+    rv_product_group = create_product_group(values)
     material = values['Material']
     code_book_level_3_rv = code_book_level_3[material]
     product_hierarchy += code_book_level_3_rv + '09221015'
@@ -107,18 +135,19 @@ def create_product_hierarchy(data):
             key = values['Material'] + ' ' + values['Härte']
             code_book_level_6_rv = code_book_level_6[key]
             product_hierarchy += code_book_level_6_rv
-        return product_hierarchy
+        return product_hierarchy, rv_product_group, values['Material']
     except KeyError:
         return 'error'
 
 
 def check_input_syntax(data):
-    help_list = ['Durchmesser', 'Schnurstärke', 'Härte', 'EK', 'Kalk.-Menge']
+    help_list = ['Durchmesser', 'Schnurstärke', 'Härte', 'EK', 'Kalk.-Menge', 'PLZ']
     error_log_correct = []
     error_log_incorrect = []
     for dataset in data:
         if dataset['description'] in help_list:
-            if dataset['description'] != 'Härte' and dataset['description'] != 'Kalk.-Menge':
+            if dataset['description'] != 'Härte' and dataset['description'] != 'Kalk.-Menge'\
+                    and dataset['description'] != 'PLZ':
                 try:
                     value = dataset['variable'].get()
                     decimal_places = value.split(',')[1]
@@ -128,45 +157,109 @@ def check_input_syntax(data):
                         error_log_incorrect.append('{} - Nur 2-stellige Kommazahl'.format
                                                    (dataset['description'].upper()))
                 except IndexError:
-                    error_log_incorrect.append('{} - Nur Kommazahlen erlaubt'.format(dataset['description'].upper()))
+                    error_log_incorrect.append('{} - Nur Kommazahlen'.format(dataset['description'].upper()))
             else:
                 value2 = dataset['variable'].get()
                 try:
-                    if int(value2) > 9:
+                    if int(value2):
                         error_log_correct.append('value correct')
                     else:
-                        error_log_incorrect.append('{} - Zahl ist zu klein'.format(dataset['description'].upper()))
+                        error_log_incorrect.append('{} - Wert eintragen'.format(dataset['description'].upper()))
                 except ValueError:
                     error_log_incorrect.append('{} - nur Ganzzahl'.format
                                                (dataset['description'].upper()))
     check_digit = error_log_correct.count('value correct')
-    if check_digit == 5:
-        return [True]
+    if check_digit == 6:
+        return False
     else:
-        return False, error_log_incorrect
+        return error_log_incorrect
+
+
+def calculate_ek(data):
+    price_container = ['EK', 'Preiseinheit']
+    multipliers = [10, 15, 20, 25]
+    ek = None
+    for dataset in data:
+        if dataset['description'] == 'EK':
+            ek = dataset['variable'].get()
+    ek = ek.replace(',', '.')
+    ek_per_piece = float(ek) / 100
+    if ek_per_piece < 0.10:
+        for multi in multipliers:
+            ek_per_piece_new = ek_per_piece * multi
+            if ek_per_piece_new >= 0.10:
+                xx = [round(ek_per_piece_new, 2), multi]
+                xx = dict(zip(price_container, xx))
+                return xx
+            else:
+                pass
+    else:
+        xx = [round(ek_per_piece, 2), 1]
+        xx = dict(zip(price_container, xx))
+        return xx
+
+
+def overhead_group(data):
+    code_book_supplier = {'Anyseals': '0', 'Dichtomatik': '0', 'Freudenberg': '1,5', 'PDT': '0', 'Arcus': '1,5'}
+    supplier_name = None
+    for dataset in data:
+        if dataset['description'] == 'Lieferant':
+            supplier_name = dataset['variable'].get()
+    return code_book_supplier[supplier_name]
+
+
+def get_plz(data):
+    for dataset in data:
+        if dataset['description'] == 'PLZ':
+            return dataset['variable'].get()
+
+
+def get_kalk_amount(data):
+    for dataset in data:
+        if dataset['description'] == 'Kalk.-Menge':
+            return dataset['variable'].get()
 
 
 def process_data(variables, root):
     rv_data = check_input_syntax(variables)
-    if rv_data[0]:
-        rv_matchco = create_matchco(variables)
-        rv_shorttext = create_shorttext(variables)
-        rv_product_hierarchy = create_product_hierarchy(variables)
-        print(rv_matchco)
-        print(rv_shorttext)
-        print(rv_product_hierarchy)
-        if rv_product_hierarchy == 'error':
-            error_window = tk.Toplevel(root)
-            error_window.title("Error")
-            error_window.geometry("200x200")
-            tk.Label(error_window, text="Hierarchie Fehler", font=("Arial", 18), pady=25).pack()
-    else:
+    if rv_data:
         error_window = tk.Toplevel(root)
         error_window.title("Error")
         error_window.geometry("350x300")
         tk.Label(error_window, text="Eingabefehler", font=("Arial", 18), pady=25).pack()
-        for error_message in rv_data[1]:
+        for error_message in rv_data:
             tk.Label(error_window, text=error_message, font=("Arial", 12)).pack()
+    else:
+        rv_product_hierarchy = create_product_hierarchy(variables)
+        if rv_product_hierarchy == 'error':
+            error_window = tk.Toplevel(root)
+            error_window.title("Error")
+            error_window.geometry("200x100")
+            tk.Label(error_window, text="Hierarchie Fehler", font=("Arial", 18), pady=25).pack()
+        else:
+            rv_matchco = create_matchco(variables)
+            rv_shorttext = create_shorttext(variables)
+            rv_ek = calculate_ek(variables)
+            rv_overhead_group = overhead_group(variables)
+            rv_plz = get_plz(variables)
+            rv_kalk_amount = get_kalk_amount(variables)
+            temp = open('template.json', 'r')
+            temp = json.load(temp)
+            temp['Materialkurztext'] = rv_shorttext
+            temp['Warengruppe'] = rv_product_hierarchy[1]
+            temp['Produkthierarchie'] = rv_product_hierarchy[0]
+            temp['Texteditor Textzeile'] = rv_shorttext
+            temp['Matchcode'] = rv_matchco
+            temp['Werkstoff'] = rv_product_hierarchy[2]
+            temp['Planlieferzeit in Tagen'] = rv_plz
+            temp['Gleitender Durchschnittspreis/Periodischer Verrechnungspreis'] = rv_ek['EK']
+            temp['Preiseinheit'] = rv_ek['Preiseinheit']
+            temp['Preiseinheit der steuerr. und handelsr. Bewertungspreise'] = rv_ek['Preiseinheit']
+            temp['Gemeinkostengruppe der Kalkulation'] = rv_overhead_group
+            temp['Losgröße der Erzeugniskalkulation'] = rv_kalk_amount
+            out_put_file = open('Output_O_Ring.json', 'w')
+            json.dump(temp, out_put_file)
+            out_put_file.close()
 
 
 def create_text_field(root, description, row):
@@ -206,14 +299,16 @@ def load_o_ring(root):
     variables.append({'description': rv_ek[0], 'variable': rv_ek[1]})
     rv_kalk_amount = create_text_field(root, 'Kalk.-Menge', 10)
     variables.append({'description': rv_kalk_amount[0], 'variable': rv_kalk_amount[1]})
+    planned_delivery_time = create_text_field(root, 'PLZ', 11)
+    variables.append({'description': planned_delivery_time[0], 'variable': planned_delivery_time[1]})
     (tk.Button(root, text="Bestätigen", command=lambda: process_data(variables, root))
-     .grid(row=11, column=1, sticky="W"))
+     .grid(row=12, column=1, sticky="N"))
 
 
 def collect_data(material_selection, win):
     data_window = tk.Toplevel(win)
     data_window.title("Dateneingabe")
-    data_window.geometry("250x330")
+    data_window.geometry("250x350")
     tk.Label(data_window, text="").grid(row=0, column=0)
     material = material_selection.get()
     if material == "O-Ring":
