@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
+from openpyxl import Workbook
+import csv
 import json
-# import pandas as pd
+import math
 
 colors = ['rot', 'blau', 'grün', 'gelb']
 supplier = ['Anyseals', 'Dichtomatik', 'Freudenberg', 'PDT', 'Arcus']
@@ -220,6 +222,23 @@ def get_kalk_amount(data):
             return dataset['variable'].get()
 
 
+def get_weight(data):
+    average_density = {'NBR': 1.25, 'EPDM': 1.14, 'FPM': 1.99, 'MVQ': 1.25, 'HNBR': 1.22}
+    relevant = ['Durchmesser', 'Schnurstärke', 'Material', 'Härte']
+    values = []
+    for dataset in data:
+        if dataset['description'] in relevant:
+            if dataset['description'] == 'Material':
+                values.append(dataset['variable'].get())
+            else:
+                values.append(float(dataset['variable'].get().replace(',', '.')))
+    relevant = dict(zip(relevant, values))
+    stretched_length = (((relevant['Durchmesser']+relevant['Durchmesser']+2*relevant['Schnurstärke'])/2)*math.pi)/10
+    volume = ((((relevant['Schnurstärke']/10)**2)*math.pi)/4)*stretched_length
+    weight = volume*average_density[relevant['Material']]
+    return round(weight, 3)
+
+
 def process_data(variables, root):
     rv_data = check_input_syntax(variables)
     if rv_data:
@@ -243,11 +262,14 @@ def process_data(variables, root):
             rv_overhead_group = overhead_group(variables)
             rv_plz = get_plz(variables)
             rv_kalk_amount = get_kalk_amount(variables)
+            rv_o_ring_weight = get_weight(variables)
             temp = open('template.json', 'r')
             temp = json.load(temp)
             temp['Materialkurztext'] = rv_shorttext
             temp['Warengruppe'] = rv_product_hierarchy[1]
             temp['Produkthierarchie'] = rv_product_hierarchy[0]
+            temp['Bruttogewicht'] = str(rv_o_ring_weight).replace('.', ',')
+            temp['Nettogewicht'] = str(rv_o_ring_weight).replace('.', ',')
             temp['Texteditor Textzeile'] = rv_shorttext
             temp['Matchcode'] = rv_matchco
             temp['Werkstoff'] = rv_product_hierarchy[2]
@@ -257,9 +279,19 @@ def process_data(variables, root):
             temp['Preiseinheit der steuerr. und handelsr. Bewertungspreise'] = rv_ek['Preiseinheit']
             temp['Gemeinkostengruppe der Kalkulation'] = rv_overhead_group
             temp['Losgröße der Erzeugniskalkulation'] = rv_kalk_amount
-            out_put_file = open('Output_O_Ring.json', 'w')
-            json.dump(temp, out_put_file)
-            out_put_file.close()
+            input_to_print_csv = []
+            for key, value in temp.items():
+                input_to_print_csv.append(str(value))
+            with open('Output_O_Ring.csv', 'w') as OutPutFile:
+                writer = csv.writer(OutPutFile, delimiter=';')
+                writer.writerow(input_to_print_csv)
+            wb = Workbook()
+            ws = wb.active
+            with open('Output_O_Ring.csv', 'r') as f:
+                for row in csv.reader(f):
+                    ws.append(row)
+            wb.save('Output_O_Ring.xlsx')
+            print('done!')
 
 
 def create_text_field(root, description, row):
